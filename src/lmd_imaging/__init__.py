@@ -7,24 +7,15 @@ import json
 import sklearn.model_selection
 from ultralytics import YOLO
 import shutil
-import torch
+import subprocess
 
 MAX_T = 2500
 MELTING_T = 1350
 
 
-def filter_contours(raw_contours, min_contour_size):
-
-    filtered_contours = []
-
-    for contour in raw_contours:
-        if cv2.contourArea(contour) > min_contour_size:
-            filtered_contours.append(contour)
-
-    return filtered_contours
-
-
 def save_contours_to_txt(contours, path: Path) -> None:
+
+    # This functions creates a .txt file for each file in the proper YOLO label format for segmentation
 
     with path.open("w") as f:
         for contour in contours:
@@ -36,6 +27,10 @@ def save_contours_to_txt(contours, path: Path) -> None:
 
 
 def img_contours(img_path: Path):
+
+    # This function (created by João Paulo Sousa [jpsousa@inegi.up.pt]) creates a contour mask around the image
+    # according to defined threshold values
+
     img = cv2.imread(str(img_path), cv2.IMREAD_UNCHANGED)
     img_height = img.shape[0]
     img_width = img.shape[1]
@@ -58,10 +53,12 @@ def img_contours(img_path: Path):
 
     contours, _ = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_TC89_KCOS)
 
-    # plot the dataset with contours (recommended for very small amounts of dataset)
+    # Plots the side-by-side comparison of the original and the corresponding mask.
+    # As this function is called iteratively, it's meant only for observing and debugging the process. Normal
+    # operation should occur with the following 4 lines of code commented to improve performance.
 
     # f, axarr = plt.subplots(1, 2)
-    # axarr[0].imshow(img_8bit)
+    # axarr[0].imshow(img)
     # axarr[1].imshow(mask)
     # plt.show()
 
@@ -72,15 +69,7 @@ def img_contours(img_path: Path):
     return normalized_contours
 
 
-def main() -> None:
-
-    project_dir = Path.cwd()
-
-    img_dir = project_dir.joinpath("dataset")
-    img_list = sorted(img_dir.glob("*.png"))
-
-    img_train, img_test = sklearn.model_selection.train_test_split(img_list, test_size=0.20)
-
+def create_data_dir(project_dir: Path, img_train, img_test):
     img_train_path = project_dir.joinpath("data", "images", "train")
     if img_train_path.exists():
         shutil.rmtree(img_train_path)
@@ -119,6 +108,20 @@ def main() -> None:
         contours = img_contours(img_path)
         save_contours_to_txt(contours, testing_labels_dir.joinpath(img_path.name).with_suffix(".txt"))
 
+
+def main() -> None:
+
+    project_dir = Path.cwd()
+
+    img_dir = project_dir.joinpath("dataset")
+    img_list = sorted(img_dir.glob("*.png"))
+
+    img_train, img_test = sklearn.model_selection.train_test_split(img_list, test_size=0.20)
+
+    create_data_dir(project_dir, img_train, img_test)  # Create a data folder to separate the training and testing data
+
+    # Create YOLO yaml config file
+
     yaml = {
         "path": str(project_dir.joinpath("data").resolve()),
         "train": "images/train",
@@ -134,6 +137,10 @@ def main() -> None:
     if runs_dir.exists():
         shutil.rmtree(runs_dir)
 
-    model = YOLO("yolov8n-seg.yaml")  # build a new model from scratch
+    # Run YOLO on the available data
 
-    model.train(data="data.yaml", epochs=4, imgsz=640)  # train the model
+    model = YOLO("yolov8n-seg.yaml")
+
+    model.train(data="data.yaml", epochs=4, imgsz=640)
+
+    subprocess.Popen(f'explorer /select,"{project_dir.joinpath("runs", "segment", "train", "weights")}"')
