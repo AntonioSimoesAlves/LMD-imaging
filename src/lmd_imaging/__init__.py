@@ -8,6 +8,7 @@ import sklearn.model_selection
 from ultralytics import YOLO
 import shutil
 import subprocess
+import platform
 
 MAX_T = 2500
 MELTING_T = 1350
@@ -58,7 +59,7 @@ def img_contours(img_path: Path):
     # operation should occur with the following 4 lines of code commented to improve performance.
 
     # f, axarr = plt.subplots(1, 2)
-    # axarr[0].imshow(img)
+    # axarr[0].imshow(img_8bit_blur)
     # axarr[1].imshow(mask)
     # plt.show()
 
@@ -116,7 +117,7 @@ def main() -> None:
     img_dir = project_dir.joinpath("dataset")
     img_list = sorted(img_dir.glob("*.png"))
 
-    img_train, img_test = sklearn.model_selection.train_test_split(img_list, test_size=0.20)
+    img_train, img_test = sklearn.model_selection.train_test_split(img_list, test_size=0.10)
 
     create_data_dir(project_dir, img_train, img_test)  # Create a data folder to separate the training and testing data
 
@@ -127,7 +128,7 @@ def main() -> None:
         "train": "images/train",
         "val": "images/val",
         "nc": 1,
-        "names": ["Outer"],
+        "names": ["Melt-pool"],
     }
     yaml_path = project_dir.joinpath("data.yaml")
     with yaml_path.open("w") as f:
@@ -141,6 +142,7 @@ def main() -> None:
 
     model = YOLO("yolov8n-seg.yaml")
 
-    model.train(data="data.yaml", epochs=4, imgsz=640)
+    model.train(data="data.yaml", epochs=10, imgsz=640)
 
-    subprocess.Popen(f'explorer /select,"{project_dir.joinpath("runs", "segment", "train", "weights")}"')
+    if platform.system() == "Windows":
+        subprocess.run(["explorer", project_dir.joinpath("runs", "segment", "train")])
