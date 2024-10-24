@@ -114,7 +114,10 @@ def main() -> None:
 
     project_dir = Path.cwd()
 
+    # img_dir = project_dir.joinpath("small_dataset")
+
     img_dir = project_dir.joinpath("dataset")
+
     img_list = sorted(img_dir.glob("*.png"))
 
     img_train, img_test = sklearn.model_selection.train_test_split(img_list, test_size=0.10)
