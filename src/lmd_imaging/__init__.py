@@ -14,7 +14,7 @@ MAX_T = 2500
 MELTING_T = 1350
 
 
-def save_contours_to_txt(contours, path: Path) -> None:
+def save_contours_to_txt(contours, path: Path, outer: bool) -> None:
 
     # This functions creates a .txt file for each file in the proper YOLO label format for segmentation
 
@@ -23,7 +23,10 @@ def save_contours_to_txt(contours, path: Path) -> None:
             contour_str = " ".join([f"{point[0][0]} {point[0][1]}" for point in contour])
             if contour_str.count(" ") < 8:
                 continue
-            f.write("0 ")
+            if outer:
+                f.write("0 ")
+            else:
+                f.write("1 ")
             f.write(f"{contour_str}\n")
 
 
@@ -61,6 +64,13 @@ def img_contours(img_path: Path):
     # f, axarr = plt.subplots(1, 2)
     # axarr[0].imshow(img_8bit_blur)
     # axarr[1].imshow(mask)
+
+    # Different type of plot that shows the temperature difference in an 8 bit scale where 255 is equal to MAX_T
+
+    # plt.imshow(img_8bit_blur, cmap="jet")
+    # plt.imshow(mask, cmap="jet")
+    #
+    # plt.colorbar()
     # plt.show()
 
     normalized_contours = []
@@ -97,7 +107,7 @@ def create_data_dir(project_dir: Path, img_train, img_test):
 
     for img_path in img_train:
         contours = img_contours(img_path)
-        save_contours_to_txt(contours, training_labels_dir.joinpath(img_path.name).with_suffix(".txt"))
+        save_contours_to_txt(contours, training_labels_dir.joinpath(img_path.name).with_suffix(".txt"), True)
 
     testing_labels_dir = project_dir.joinpath("data", "labels", "val")
     if testing_labels_dir.exists():
@@ -107,16 +117,16 @@ def create_data_dir(project_dir: Path, img_train, img_test):
 
     for img_path in img_test:
         contours = img_contours(img_path)
-        save_contours_to_txt(contours, testing_labels_dir.joinpath(img_path.name).with_suffix(".txt"))
+        save_contours_to_txt(contours, testing_labels_dir.joinpath(img_path.name).with_suffix(".txt"), True)
 
 
 def main() -> None:
 
     project_dir = Path.cwd()
 
-    # img_dir = project_dir.joinpath("small_dataset")
+    img_dir = project_dir.joinpath("small_dataset")
 
-    img_dir = project_dir.joinpath("dataset")
+    # img_dir = project_dir.joinpath("dataset")
 
     img_list = sorted(img_dir.glob("*.png"))
 
@@ -131,7 +141,7 @@ def main() -> None:
         "train": "images/train",
         "val": "images/val",
         "nc": 1,
-        "names": ["Melt-pool"],
+        "names": ["Outer Melt-pool"],
     }
     yaml_path = project_dir.joinpath("data.yaml")
     with yaml_path.open("w") as f:
@@ -143,7 +153,7 @@ def main() -> None:
 
     # Run YOLO on the available data
 
-    model = YOLO("yolov8n-seg.yaml")
+    model = YOLO("yolo11n-seg.yaml")
 
     model.train(data="data.yaml", epochs=10, imgsz=640)
 
