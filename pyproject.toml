@@ -9,12 +9,12 @@ dependencies = [
     "numpy>=1.26.3",
     "opencv-python>=4.10.0.84",
     "scikit-learn>=1.5.2",
-    "ultralytics>=8.2.93",
+    "ultralytics>=8.3.27",
 ]
 
 [project.optional-dependencies]
 gpu = [
-    "torch==2.4.1+cu124; platform_system == 'Windows' or platform_system == 'Linux'",
+    "torch==2.5.1+cu124; platform_system == 'Windows' or platform_system == 'Linux'",
 ]
 
 [project.scripts]
