@@ -5,6 +5,7 @@
 /data.yaml
 /labels.cache
 /yolov8n.pt
+/yolo11n.pt
 
 ### Python template
 # Byte-compiled / optimized / DLL files
