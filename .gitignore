@@ -1,5 +1,6 @@
 /dataset/
 /small_dataset/
+/single_image_dataset/
 /data/
 /runs/
 /data.yaml
