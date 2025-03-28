@@ -21,7 +21,7 @@ Setup:
 ```pwsh
 py -3 -m venv venv
 .\venv\Scripts\pip install . # without GPU support
-.\venv\Scripts\pip install .[gpu] --extra-index-url "https://download.pytorch.org/whl/cu124" # with GPU support
+.\venv\Scripts\pip install .[gpu] --extra-index-url "https://download.pytorch.org/whl/cu126" # with GPU support
 ```
 
 Running:
@@ -37,7 +37,7 @@ Setup:
 ```sh
 python3 -m venv venv
 venv/bin/pip install . # without GPU support
-venv/bin/pip install .[gpu] --extra-index-url "https://download.pytorch.org/whl/cu124" # with GPU support
+venv/bin/pip install .[gpu] --extra-index-url "https://download.pytorch.org/whl/cu126" # with GPU support
 ```
 
 Running:
