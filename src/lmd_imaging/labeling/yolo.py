@@ -35,9 +35,10 @@ class YoloLabeler(Labeler):
     ) -> Iterator[Labels | None]:
         if isinstance(images, Path) and not images.is_dir():
             raise ValueError("Path must be a directory")
-        for image in images:
-            if isinstance(image, np.ndarray) and (len(image.shape) < 3 or image.shape[2] != 3):
-                raise ValueError("YOLO only supports BGR images")
+        if hasattr(images, "__iter__"):
+            for image in images:
+                if isinstance(image, np.ndarray) and (len(image.shape) < 3 or image.shape[2] != 3):
+                    raise ValueError("YOLO only supports BGR images")
 
         return map(
             yolo_results_to_labels,
