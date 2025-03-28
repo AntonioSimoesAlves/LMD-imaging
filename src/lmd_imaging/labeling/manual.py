@@ -1,0 +1,295 @@
+import math
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from .common import Labels, Labeler, Point, LIQUID, MUSHY
+
+DEBUG_Y_SWEEP = False
+
+MAX_T = 2500
+MELTING_T = 1100
+MUSHY_MINIMUM = 1200
+
+DELTA_THRESHOLD = -140
+
+X_HOTSPOT = [265, 304]
+Y_HOTSPOT = [215, 245]
+
+SEGMENT_Y_MIN = 175
+SEGMENT_Y_MAX = 280
+
+
+class ManualLabeler(Labeler):
+    def label(self, image: cv2.typing.MatLike | Path) -> Labels | None:
+        if isinstance(image, Path):
+            image = cv2.imread(str(image), cv2.IMREAD_UNCHANGED)
+        image_height, image_width = image.shape[:2]
+
+        liquid_intersections = {}
+        mushy_intersections = {}
+
+        for y_coord in range(SEGMENT_Y_MIN, SEGMENT_Y_MAX):
+            temps = extract_line_temperature(image, y_coord)
+            temp_moving_averages = calculate_moving_average(temps, 11)
+            deltas = calculate_deltas(image_width, temp_moving_averages)
+            deltas_sum = calculate_deltas_sum(deltas)
+            deltas_sum_moving_average = calculate_moving_average(deltas_sum, 9)
+
+            liquid_crossing_point, mushy_crossing_point = find_crossing_point(
+                deltas_sum_moving_average, X_HOTSPOT, Y_HOTSPOT, DELTA_THRESHOLD, y_coord, temp_moving_averages
+            )
+
+            intersection = list(filter(lambda n: n != 0, liquid_crossing_point))
+            if intersection:
+                liquid_intersections[y_coord] = intersection
+
+            intersection = list(filter(lambda n: n != 0, mushy_crossing_point))
+            if intersection:
+                mushy_intersections[y_coord] = intersection
+
+            # if DEBUG_Y_SWEEP:
+            #     x_min = 100
+            #     x_max = 350
+            #
+            #     plt.figure(1, figsize=(10, 10))
+            #     plt.subplot(3, 1, 1)
+            #     plt.xlim([x_min, x_max])
+            #     plt.ylim([SEGMENT_Y_MIN, SEGMENT_Y_MAX])
+            #     # plt.title(img_path.resolve().name)
+            #     plt.imshow(image)
+            #     for i in range(len(liquid_crossing_point)):
+            #         plt.scatter(liquid_crossing_point[i], y_coord, color="red")
+            #     for i in range(len(mushy_crossing_point)):
+            #         plt.scatter(mushy_crossing_point[i], y_coord, color="yellow")
+            #     plt.axhline(y_coord, color="red")
+            #     plt.subplot(3, 1, 2)
+            #     plt.plot(deltas_sum)
+            #     plt.xlim([x_min, x_max])
+            #     plt.subplot(3, 1, 3)
+            #     plt.plot(deltas_sum_moving_average)
+            #     for i in range(len(liquid_crossing_point)):
+            #         plt.axvline(liquid_crossing_point[i], color="red")
+            #     plt.xlim([x_min, x_max])
+            #     plt.show()
+
+        return {
+            LIQUID: self._segment(liquid_intersections, image_width, image_height),
+            MUSHY: self._segment(mushy_intersections, image_width, image_height),
+        }
+
+    @staticmethod
+    def _segment(intersections, image_width, image_height) -> list[Point]:
+        output = []
+
+        points: [Point] = []
+        segments: [tuple[int, int]] = []
+
+        left_end = None
+        right_end = None
+
+        for y, intersection in intersections.items():
+            if not intersection:
+                continue
+            for x in intersection:
+                match len(points):
+                    case 0:
+                        points.append(Point(x, y))
+                    case 1:
+                        points.append(Point(x, y))
+                        first_point = points[0]
+                        if first_point.x < x:
+                            left_end = 0
+                            right_end = 1
+                        else:
+                            left_end = 1
+                            right_end = 0
+                        segments.append((left_end, right_end))
+                    case index:
+                        points.append(Point(x, y))
+
+                        left_point = points[left_end]
+                        right_point = points[right_end]
+                        distance_to_left = math.sqrt((left_point.x - x) ** 2 + (left_point.y - y) ** 2)
+                        distance_to_right = math.sqrt((right_point.x - x) ** 2 + (right_point.y - y) ** 2)
+
+                        if distance_to_left < distance_to_right:
+                            segments.append((left_end, index))
+                            left_end = index
+                        else:
+                            segments.append((right_end, index))
+                            right_end = index
+
+        segments.append((right_end, left_end))
+
+        mask_coordinates = []
+        visited_segments = set()
+
+        current_segment = segments[0]
+        first_point = current_segment[0]
+        while True:
+            if current_segment in visited_segments:
+                raise SegmentLoopException()
+            visited_segments.add(current_segment)
+
+            if current_segment[1] is None:
+                raise EndOfSegmentation
+            segment_end_point = points[current_segment[1]]
+            output.append(Point(segment_end_point.x, segment_end_point.y))
+            mask_coordinates.append(segment_end_point.x)
+            mask_coordinates.append(segment_end_point.y)
+            previous_segment_start = current_segment[0]
+            next_segment_start = current_segment[1]
+            current_segment = next(filter(lambda segment: segment[0] == next_segment_start, segments), None)
+            if current_segment is None:
+                break
+
+        try:
+            current_segment = next(
+                filter(
+                    lambda segment: segment[1] == next_segment_start and segment[0] != previous_segment_start,
+                    segments,
+                )
+            )
+        except StopIteration:
+            raise EndOfSegmentation
+
+        while True:
+            if current_segment in visited_segments:
+                raise SegmentLoopException()
+            visited_segments.add(current_segment)
+
+            segment_end_point = points[current_segment[0]]
+            output.append(Point(segment_end_point.x, segment_end_point.y))
+            mask_coordinates.append(segment_end_point.x)
+            mask_coordinates.append(segment_end_point.y)
+            next_segment_start = current_segment[0]
+            if next_segment_start == first_point:
+                break
+
+            current_segment = next(filter(lambda segment: segment[1] == next_segment_start, segments))
+
+        return output
+
+
+def calculate_moving_average(line: np.ndarray | list[float], average_sample_size: int) -> list[float]:
+    if isinstance(line, np.ndarray):
+        line = line.tolist()  # TODO: avoid this
+    moving_average = []
+
+    for i in range(len(line)):
+        previous_values = []
+        next_values = []
+        current_value = line[i]
+        for j in range(1, average_sample_size // 2 + 1):
+            if (i - j) < 0:
+                previous_values.append(line[i])
+            else:
+                previous_values.append(line[i - j])
+            if (i + j) > len(line) - 1:
+                next_values.append(line[i])
+            else:
+                next_values.append(line[i + j])
+        moving_average.append(round((current_value + sum(previous_values) + sum(next_values)) / average_sample_size, 3))
+
+    return moving_average
+
+
+def extract_line_temperature(image: cv2.typing.MatLike, y_coord: int) -> np.ndarray:
+    """Fetches a horizontal pixel line and converts it into temperature data.
+
+    Warning: scaling might change depending on image capture method used, and may need to be adjusted."""
+    return image[y_coord] / 10
+
+
+def calculate_deltas(img_width, moving_average) -> list:
+    pixels_deltas = []
+
+    for x in range(img_width):
+        if x > 0:
+            past_value = moving_average[x - 1]
+            current_value = moving_average[x]
+            delta = round(current_value - past_value, 3)
+            pixels_deltas.append(delta)
+        else:
+            pixels_deltas.append(0)
+
+    return pixels_deltas
+
+
+def calculate_deltas_sum(pixels_deltas) -> list:
+    deltas_sum = []
+
+    for i in range(len(pixels_deltas)):
+        if i < len(pixels_deltas) - 1:
+            deltas_sum.append(
+                10 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2] - pixels_deltas[i + 1]
+            )
+        else:
+            deltas_sum.append(6 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2])
+
+    return deltas_sum
+
+
+def find_crossing_point(
+    deltas_sum_moving_average, x_center, y_center, delta_threshold, y_coord, temperature_moving_average
+) -> tuple[list[int], list[int]]:
+
+    melt_pool_points_liquid_coordinate = []
+    melt_pool_points_mushy_coordinate = []
+    found_first_mushy_point = False
+
+    for i in range(len(deltas_sum_moving_average)):
+        if deltas_sum_moving_average[i] < delta_threshold:
+            if len(deltas_sum_moving_average) >= i + 7:
+                if (x_center[0] < i < x_center[1] and y_center[0] < y_coord < y_center[1]) or (
+                    deltas_sum_moving_average[i - 5] > abs(delta_threshold)
+                    or deltas_sum_moving_average[i - 4] > abs(delta_threshold)
+                    or deltas_sum_moving_average[i - 3] > abs(delta_threshold)
+                    or deltas_sum_moving_average[i - 2] > abs(delta_threshold)
+                    or deltas_sum_moving_average[i - 1] > abs(delta_threshold)
+                ):
+                    continue
+            if temperature_moving_average[i] > MELTING_T:
+                if len(melt_pool_points_liquid_coordinate) > 0:
+                    if i - melt_pool_points_liquid_coordinate[-1] > 20:
+                        melt_pool_points_liquid_coordinate.append(i)
+                else:
+                    melt_pool_points_liquid_coordinate.append(i)
+
+    for i in range(len(deltas_sum_moving_average)):
+        if temperature_moving_average[i] > MUSHY_MINIMUM and not found_first_mushy_point:
+            if len(melt_pool_points_liquid_coordinate) == 0:
+                continue
+            found_first_mushy_point = True
+            melt_pool_points_mushy_coordinate.append(i)
+        if (
+            temperature_moving_average[i] > MUSHY_MINIMUM
+            and melt_pool_points_liquid_coordinate[0] == i + 1
+            and found_first_mushy_point
+            and len(melt_pool_points_liquid_coordinate) > 0
+        ):
+            if len(melt_pool_points_liquid_coordinate) == 1:
+                if 1200 < temperature_moving_average[melt_pool_points_liquid_coordinate[-1] + 10] < 1400:
+                    melt_pool_points_mushy_coordinate.append(i)
+                else:
+                    if len(melt_pool_points_mushy_coordinate) == 1:
+                        melt_pool_points_mushy_coordinate.pop()
+                        break
+            elif len(melt_pool_points_liquid_coordinate) >= 2:
+                melt_pool_points_mushy_coordinate.append(i)
+
+    return melt_pool_points_liquid_coordinate, melt_pool_points_mushy_coordinate
+
+
+class SegmentLoopException(Exception):
+    pass
+
+
+class EndOfSegmentation(Exception):
+    pass
+
+
+class NoInterceptionException(Exception):
+    pass

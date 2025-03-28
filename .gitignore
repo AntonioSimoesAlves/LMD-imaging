@@ -1,12 +1,19 @@
 /dataset/
 /small_dataset/
-/single_image_dataset/
+/micro_dataset/
+/nano_dataset/
 /data/
 /runs/
+/pixels_tests/
+/manta/
+/xiris/
+/soem/
+/pico_dataset/
+/timestamps.csv
 /data.yaml
 /labels.cache
-/yolov8n.pt
 /yolo11n.pt
+/filename.png
 
 ### Python template
 # Byte-compiled / optimized / DLL files
