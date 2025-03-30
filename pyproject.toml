@@ -35,3 +35,6 @@ dev-dependencies = [
 [tool.black]
 line-length = 120
 target-version = ['py312']
+
+[tool.mypy]
+python_version = "3.12"

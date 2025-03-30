@@ -73,18 +73,20 @@ class ManualLabeler(Labeler):
             #         plt.axvline(liquid_crossing_point[i], color="red")
             #     plt.xlim([x_min, x_max])
             #     plt.show()
-
-        return {
-            LIQUID: self._segment(liquid_intersections, image_width, image_height),
-            MUSHY: self._segment(mushy_intersections, image_width, image_height),
-        }
+        try:
+            return {
+                LIQUID: self._segment(liquid_intersections),
+                MUSHY: self._segment(mushy_intersections),
+            }
+        except EndOfSegmentation as _:
+            return None
 
     @staticmethod
-    def _segment(intersections, image_width, image_height) -> list[Point]:
+    def _segment(intersections) -> list[Point]:
         output = []
 
-        points: [Point] = []
-        segments: [tuple[int, int]] = []
+        points: list[Point] = []
+        segments: list[tuple[int, int]] = []
 
         left_end = None
         right_end = None
@@ -107,6 +109,9 @@ class ManualLabeler(Labeler):
                             right_end = 0
                         segments.append((left_end, right_end))
                     case index:
+                        assert isinstance(left_end, int)
+                        assert isinstance(right_end, int)
+
                         points.append(Point(x, y))
 
                         left_point = points[left_end]
@@ -121,29 +126,32 @@ class ManualLabeler(Labeler):
                             segments.append((right_end, index))
                             right_end = index
 
+        if left_end is None or right_end is None:
+            raise EndOfSegmentation()
+
         segments.append((right_end, left_end))
 
         mask_coordinates = []
         visited_segments = set()
 
         current_segment = segments[0]
-        first_point = current_segment[0]
+        initial_point = current_segment[0]
         while True:
             if current_segment in visited_segments:
                 raise SegmentLoopException()
             visited_segments.add(current_segment)
 
-            if current_segment[1] is None:
-                raise EndOfSegmentation
             segment_end_point = points[current_segment[1]]
             output.append(Point(segment_end_point.x, segment_end_point.y))
             mask_coordinates.append(segment_end_point.x)
             mask_coordinates.append(segment_end_point.y)
             previous_segment_start = current_segment[0]
             next_segment_start = current_segment[1]
-            current_segment = next(filter(lambda segment: segment[0] == next_segment_start, segments), None)
-            if current_segment is None:
+
+            s = next(filter(lambda segment: segment[0] == next_segment_start, segments), None)
+            if s is None:
                 break
+            current_segment = s
 
         try:
             current_segment = next(
@@ -153,7 +161,7 @@ class ManualLabeler(Labeler):
                 )
             )
         except StopIteration:
-            raise EndOfSegmentation
+            raise EndOfSegmentation()
 
         while True:
             if current_segment in visited_segments:
@@ -165,7 +173,7 @@ class ManualLabeler(Labeler):
             mask_coordinates.append(segment_end_point.x)
             mask_coordinates.append(segment_end_point.y)
             next_segment_start = current_segment[0]
-            if next_segment_start == first_point:
+            if next_segment_start == initial_point:
                 break
 
             current_segment = next(filter(lambda segment: segment[1] == next_segment_start, segments))
@@ -236,8 +244,8 @@ def find_crossing_point(
     deltas_sum_moving_average, x_center, y_center, delta_threshold, y_coord, temperature_moving_average
 ) -> tuple[list[int], list[int]]:
 
-    melt_pool_points_liquid_coordinate = []
-    melt_pool_points_mushy_coordinate = []
+    melt_pool_points_liquid_coordinate: list[int] = []
+    melt_pool_points_mushy_coordinate: list[int] = []
     found_first_mushy_point = False
 
     for i in range(len(deltas_sum_moving_average)):
