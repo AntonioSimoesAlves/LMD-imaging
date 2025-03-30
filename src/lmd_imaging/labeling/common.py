@@ -1,3 +1,4 @@
+import multiprocessing
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Iterable
 from pathlib import Path
@@ -23,7 +24,8 @@ class Labeler(ABC):
         pass
 
     def batch_label(self, images: Iterable[cv2.typing.MatLike | Path]) -> Iterator[Labels | None]:
-        return map(self.label, images)
+        with multiprocessing.Pool() as pool:
+            return pool.map(self.label, images)
 
 
 def labels_to_txt(labels: Labels, to: TextIO) -> None:

@@ -54,14 +54,13 @@ def prepare_dataset_and_generate_labels(dataset_dir: Path, output_dir: Path, tes
         (img_train, output_paths.image_train, output_paths.label_train),
         (img_test, output_paths.image_validate, output_paths.label_validate),
     ]:
-        for input_image in input_images:
-            label = labeler.label(input_image)
-            if label is None:
+        for image, labels in zip(iter(input_images), labeler.batch_label(input_images)):
+            if labels is None:
                 continue
 
-            shutil.copy(input_image, output_image_set.joinpath(input_image.name))
-            with output_label_set.joinpath(input_image.stem + ".txt").open("w", encoding="utf-8") as fd:
-                labels_to_txt(label, fd)
+            shutil.copy(image, output_image_set.joinpath(image.name))
+            with output_label_set.joinpath(image.stem + ".txt").open("w", encoding="utf-8") as fd:
+                labels_to_txt(labels, fd)
 
     return output_paths
 
