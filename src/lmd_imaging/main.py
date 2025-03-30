@@ -37,6 +37,9 @@ def main() -> None:
     yolo_labeler = YoloLabeler(model_weight_path, "cuda:0")
     for image_path in project_dir.joinpath(PREDICTION_DATASET).glob("*.png"):
         labels = yolo_labeler.label(image_path, save_predictions=(yolo_run_dir, "predict"))
+        if labels is None:
+            print(f"'{image_path}' could not be labeled")
+            continue
         with yolo_run_dir.joinpath("predict", "labels", image_path.stem + ".txt").open("w", encoding="utf-8") as fd:
             labels_to_txt(labels, fd)
         with yolo_run_dir.joinpath("predict", "regression-curve", image_path.stem + ".txt").open(

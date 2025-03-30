@@ -2,6 +2,7 @@ import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import sklearn
 from ultralytics import YOLO
@@ -9,7 +10,7 @@ from ultralytics import YOLO
 from .labeling import ManualLabeler, labels_to_txt
 
 
-def define_dataset(img_path, img_type) -> list[Path]:
+def define_dataset(img_path: Path, img_type: str) -> list[Path]:
     project_dir = Path.cwd()
 
     img_dir = project_dir.joinpath(img_path)
@@ -27,15 +28,14 @@ class OutputPaths:
     label_validate: Path
 
     def __init__(self, output_dir: Path) -> None:
-        super().__init__(
-            base=output_dir,
-            image_train=output_dir.joinpath("data", "images", "train"),
-            image_validate=output_dir.joinpath("data", "images", "val"),
-            label_train=output_dir.joinpath("data", "labels", "train"),
-            label_validate=output_dir.joinpath("data", "labels", "val"),
-        )
+        super().__init__()
+        self.base = output_dir
+        self.image_train = output_dir.joinpath("data", "images", "train")
+        self.image_validate = output_dir.joinpath("data", "images", "val")
+        self.label_train = output_dir.joinpath("data", "labels", "train")
+        self.label_validate = output_dir.joinpath("data", "labels", "val")
 
-    def create(self):
+    def create(self) -> None:
         for path in (self.image_train, self.image_validate, self.label_train, self.label_validate):
             if path.exists():
                 shutil.rmtree(path)
@@ -56,6 +56,9 @@ def prepare_dataset_and_generate_labels(dataset_dir: Path, output_dir: Path, tes
     ]:
         for input_image in input_images:
             label = labeler.label(input_image)
+            if label is None:
+                continue
+
             shutil.copy(input_image, output_image_set.joinpath(input_image.name))
             with output_label_set.joinpath(input_image.stem + ".txt").open("w", encoding="utf-8") as fd:
                 labels_to_txt(label, fd)
@@ -63,7 +66,7 @@ def prepare_dataset_and_generate_labels(dataset_dir: Path, output_dir: Path, tes
     return output_paths
 
 
-def train_dataset(dataset_paths: OutputPaths, yolo_model: str = "yolo11n-seg.yaml", **train_kwargs) -> Path:
+def train_dataset(dataset_paths: OutputPaths, yolo_model: str = "yolo11n-seg.yaml", **train_kwargs: Any) -> Path:
     yaml = {
         "path": str(dataset_paths.base.joinpath("data").resolve()),
         "train": "images/train",

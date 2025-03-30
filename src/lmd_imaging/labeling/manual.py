@@ -82,7 +82,7 @@ class ManualLabeler(Labeler):
             return None
 
     @staticmethod
-    def _segment(intersections) -> list[Point]:
+    def _segment(intersections: dict[int, list[int]]) -> list[Point]:
         output = []
 
         points: list[Point] = []
@@ -211,7 +211,7 @@ def extract_line_temperature(image: cv2.typing.MatLike, y_coord: int) -> np.ndar
     return image[y_coord] / 10
 
 
-def calculate_deltas(img_width, moving_average) -> list:
+def calculate_deltas(img_width: int, moving_average: list[float]) -> list[float]:
     pixels_deltas = []
 
     for x in range(img_width):
@@ -221,29 +221,33 @@ def calculate_deltas(img_width, moving_average) -> list:
             delta = round(current_value - past_value, 3)
             pixels_deltas.append(delta)
         else:
-            pixels_deltas.append(0)
+            pixels_deltas.append(0.0)
 
     return pixels_deltas
 
 
-def calculate_deltas_sum(pixels_deltas) -> list:
+def calculate_deltas_sum(pixels_deltas: list[float]) -> list[float]:
     deltas_sum = []
 
     for i in range(len(pixels_deltas)):
         if i < len(pixels_deltas) - 1:
             deltas_sum.append(
-                10 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2] - pixels_deltas[i + 1]
+                10.0 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2] - pixels_deltas[i + 1]
             )
         else:
-            deltas_sum.append(6 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2])
+            deltas_sum.append(6.0 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2])
 
     return deltas_sum
 
 
 def find_crossing_point(
-    deltas_sum_moving_average, x_center, y_center, delta_threshold, y_coord, temperature_moving_average
+    deltas_sum_moving_average: list[float],
+    x_center: list[int],
+    y_center: list[int],
+    delta_threshold: float,
+    y_coord: int,
+    temperature_moving_average: list[float],
 ) -> tuple[list[int], list[int]]:
-
     melt_pool_points_liquid_coordinate: list[int] = []
     melt_pool_points_mushy_coordinate: list[int] = []
     found_first_mushy_point = False

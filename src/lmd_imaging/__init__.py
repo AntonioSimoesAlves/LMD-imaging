@@ -1,1 +1,2 @@
-from .main import main
+from . import labeling as labeling
+from .main import main as main

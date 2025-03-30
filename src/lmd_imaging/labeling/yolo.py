@@ -1,5 +1,6 @@
 from collections.abc import Iterator, Iterable
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -51,7 +52,7 @@ class YoloLabeler(Labeler):
         )
 
     @staticmethod
-    def _save_predictions_kwargs(save_predictions: tuple[Path, str] | None) -> dict:
+    def _save_predictions_kwargs(save_predictions: tuple[Path, str] | None) -> dict[str, Any]:
         if save_predictions is not None:
             return {
                 "save": True,
