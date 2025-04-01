@@ -30,6 +30,8 @@ class Labeler(ABC):
 
 def labels_to_txt(labels: Labels, to: TextIO) -> None:
     for label, coords in labels.items():
+        if coords is None:
+            continue
         to.write(label)
         for point in coords:
             to.write(" ")
@@ -68,6 +70,8 @@ def regression_curves_to_txt(labels: Labels, to: TextIO) -> None:
         (LIQUID, calculate_liquid_melt_pool_regression_curve),
         (MUSHY, calculate_mushy_melt_pool_regression_curve),
     ]:
+        if labels.get(class_) is None:
+            continue
         to.write(class_)
         for regression_parameters in f(labels[class_]):
             to.write(" ")

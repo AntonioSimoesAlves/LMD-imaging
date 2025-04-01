@@ -1,3 +1,4 @@
+import math
 from collections.abc import Iterator, Iterable
 from pathlib import Path
 from typing import Any
@@ -69,32 +70,52 @@ def yolo_results_to_labels(prediction_results: ultralytics.engine.results.Result
 
     liquid_melt_pool_mask_index, mushy_melt_pool_mask_index = get_mask_indices(prediction_results)
 
-    liquid_melt_pool_mask = prediction_results.masks.xy[liquid_melt_pool_mask_index]
-    mushy_melt_pool_mask = prediction_results.masks.xy[mushy_melt_pool_mask_index]
+    liquid_melt_pool_mask = (
+        prediction_results.masks.xy[liquid_melt_pool_mask_index] if liquid_melt_pool_mask_index is not None else None
+    )
+    mushy_melt_pool_mask = (
+        prediction_results.masks.xy[mushy_melt_pool_mask_index] if mushy_melt_pool_mask_index is not None else None
+    )
 
     return {
-        LIQUID: [Point(row[0], row[1]) for row in liquid_melt_pool_mask],
-        MUSHY: [Point(row[0], row[1]) for row in mushy_melt_pool_mask],
+        LIQUID: [Point(row[0], row[1]) for row in liquid_melt_pool_mask] if liquid_melt_pool_mask is not None else None,
+        MUSHY: [Point(row[0], row[1]) for row in mushy_melt_pool_mask] if mushy_melt_pool_mask is not None else None,
     }
 
 
-def get_mask_indices(prediction_results: ultralytics.engine.results.Results) -> tuple[int, int]:
+def get_mask_indices(prediction_results: ultralytics.engine.results.Results) -> tuple[int | None, int | None]:
     liquid = None
     mushy = None
+    liquid_id = None
+    mushy_id = None
 
     for key, value in prediction_results.names.items():
         if value == "Liquid Melt Pool":
-            liquid = key
-            if mushy is not None:
+            liquid_id = key
+            if mushy_id is not None:
                 break
         elif value == "Mushy Melt Pool":
-            mushy = key
-            if liquid is not None:
+            mushy_id = key
+            if liquid_id is not None:
                 break
 
-    assert str(liquid) == LIQUID
-    assert str(mushy) == MUSHY
+    if liquid_id is None or mushy_id is None:
+        raise ValueError("missing class names")
 
-    if liquid is None or mushy is None:
-        raise ValueError("Could not find mask names")
+    assert str(liquid_id) == LIQUID
+    assert str(mushy_id) == MUSHY
+
+    current_biggest_liquid_mask_size = -1
+    current_biggest_mushy_mask_size = -1
+
+    mask_classes = prediction_results.boxes.cls.cpu().tolist()
+
+    for i, class_id in enumerate(mask_classes):
+        if math.isclose(class_id, liquid_id) and len(prediction_results.masks.xy[i]) > current_biggest_liquid_mask_size:
+            current_biggest_liquid_mask_size = len(prediction_results.masks.xy[i])
+            liquid = i
+        if math.isclose(class_id, mushy_id) and len(prediction_results.masks.xy[i]) > current_biggest_mushy_mask_size:
+            current_biggest_mushy_mask_size = len(prediction_results.masks.xy[i])
+            mushy = i
+
     return liquid, mushy
