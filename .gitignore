@@ -9,11 +9,22 @@
 /xiris/
 /soem/
 /pico_dataset/
+/validation_images/
+/validation_images_labels/
+/manual_images/
+/manual_images_labels/
+/example_images/
 /timestamps.csv
 /data.yaml
 /labels.cache
 /yolo11n.pt
 /filename.png
+/_timestamps_params.npy
+/df.csv
+/df_2.csv
+/df_3.csv
+/new_df.csv
+/regression_parameters.csv
 
 ### Python template
 # Byte-compiled / optimized / DLL files
