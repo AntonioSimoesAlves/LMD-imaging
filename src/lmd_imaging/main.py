@@ -1,50 +1,607 @@
+import csv
+import itertools
 import shutil
-import time
+from copy import deepcopy
 from pathlib import Path
+from sys import stdout
+from typing import Iterator
 
-from .labeling import labels_to_txt, regression_curves_to_txt, YoloLabeler
-from .training import prepare_dataset_and_generate_labels, train_dataset
+import click
+import matplotlib.pyplot as plt
 
-MODEL_TRAINING_DATASET = "micro_dataset"
+from .labeling import YoloLabeler, labels_to_txt, Point, regression_curves_to_txt, Labels
+from .labeling.plotting import plot_regression_curves, plot_labels
+from .training import prepare_dataset_and_generate_labels, OutputPaths, train_dataset
 
-PREDICTION_DATASET = "pico_dataset"
+MODEL = Path.cwd().joinpath("runs", "train", "weights", "best.pt")
 
-DO_TRAINING = False
+
+@click.group()
+def cli() -> None:
+    pass
+
+
+@cli.command(short_help="Generate YOLO-based txt labels for input_ files.")
+@click.argument(
+    "input_",
+    type=click.Path(
+        exists=True,
+        readable=True,
+        allow_dash=False,  # TODO
+        path_type=Path,
+    ),
+)
+@click.option(
+    "--model",
+    "-m",
+    type=click.Path(
+        dir_okay=False,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    help="Path to YOLO model",
+)
+@click.option(
+    "--device",
+    "-d",
+    type=str,
+    help="Specify which device to use for YOLO prediction.",
+)
+@click.option(
+    "--output",
+    default=stdout,
+    type=click.Path(
+        file_okay=False,
+        exists=False,
+        readable=True,
+        path_type=Path,
+    ),
+    show_default=True,
+    help="Where to write the labels to.",
+)
+@click.option(
+    "--image-type",
+    default=".png",
+    type=click.Choice([".jpg", ".jpeg", ".png"]),
+    show_default=True,
+    help="Input image type.",
+)
+def yolo_label(
+    input_: Path,
+    model: Path,
+    device: str,
+    output: Path,
+    image_type=".png",
+) -> None:
+    if model is None:
+        model = "yolo11n-seg.yaml"
+    labeler = YoloLabeler(model=model, device=device)
+
+    if output.exists():
+        shutil.rmtree(output)
+    output.mkdir(parents=True, exist_ok=True)
+
+    if input_.is_dir():
+        input_ = Path(input_)
+        for image in sorted(input_.glob("*" + image_type)):
+            if str(image) == "-" or image.is_dir():
+                raise ValueError("Directory and stdin inputs can only be passed as a single input")
+            labels = labeler.label(image)
+            output_path = output.joinpath(image.stem + ".txt")
+            with output_path.open("w", encoding="utf-8") as fd:
+                labels_to_txt(labels, fd)
+    elif input_.is_file():
+        labels = labeler.label(input_)
+        output_path = output.joinpath(input_.stem + ".txt")
+        with output_path.open("w", encoding="utf-8") as fd:
+            labels_to_txt(labels, fd)
+
+
+@cli.command(short_help="Generate segmentation masks for input_ files.")
+@click.argument(
+    "input_",
+    type=click.Path(
+        dir_okay=True,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+        file_okay=True,
+    ),
+)
+@click.option(
+    "--model",
+    "-m",
+    type=click.Path(
+        dir_okay=False,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    help="Path to YOLO model",
+)
+@click.option(
+    "--device",
+    "-d",
+    type=str,
+    help="Specify which device to use for YOLO prediction.",
+)
+@click.option(
+    "--output",
+    default=Path.cwd().joinpath("runs", "segment"),
+    type=click.Path(
+        dir_okay=True,
+        exists=False,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    show_default=True,
+    help="Where to write the labels to.",
+)
+@click.option(
+    "--run-name",
+    type=str,
+    default=Path.cwd().joinpath("runs", "predict"),
+    show_default=True,
+    help="Name of the folder to write to.",
+)
+def prediction(
+    input_: Path,
+    model: Path,
+    device: str,
+    output: Path,
+    run_name: Path,
+) -> Iterator[Labels | None]:
+
+    output_dir = output.joinpath(run_name.stem)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+
+    labeler = YoloLabeler(model=model, device=device)
+    if input_.is_dir():
+        labels = labeler.batch_label(
+            input_,
+            save_predictions=(output, str(run_name.stem)),
+        )
+    elif input_.is_file():
+        labels = labeler.label(
+            input_,
+            save_predictions=(output, str(run_name.stem)),
+        )
+    elif not input_.exists():
+        exit()
+
+    return labels
+
+
+@cli.command(short_help="Generate YOLO-based txt files for regression parameters.")
+@click.argument(
+    "input_",
+    type=click.Path(
+        dir_okay=True,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+)
+@click.option(
+    "--output",
+    default=Path.cwd().joinpath("runs", "segment", "predict", "regression_parameters"),
+    show_default=True,
+    type=click.Path(
+        dir_okay=True,
+        exists=False,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    help="Where to write the labels to.",
+)
+@click.option(
+    "--write-csv",
+    type=bool,
+    default=False,
+    show_default=True,
+    is_flag=True,
+    help="Write labels to CSV.",
+)
+@click.option(
+    "--overwrite-df",
+    type=bool,
+    default=False,
+    show_default=True,
+    is_flag=True,
+    help='Overwrite existing labels in "new_df.csv". Requires "df_2.csv" and "df_3.csv"',
+)
+def regression_parameters(
+    input_: Path,
+    output: Path,
+    write_csv: bool,
+    overwrite_df: bool,
+) -> None:
+    if output.exists():
+        shutil.rmtree(output)
+    output.mkdir(parents=True, exist_ok=True)
+
+    if overwrite_df and not write_csv:
+        raise ValueError(f"First write the intended csv. (use {"--write-csv"})")
+
+    if write_csv:
+        with open("regression_parameters.csv", "w", encoding="utf-8", newline="") as csv_fd:
+            writer = csv.writer(csv_fd, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(["xiris_name", "a_liquid", "b_liquid", "c_liquid", "a_mushy", "b_mushy", "c_mushy"])
+
+    files_list = []
+
+    if input_.is_file():
+        labels = {}
+        with input_.open("r", encoding="utf-8") as fd:
+            for line in fd:
+                class_, *coords = line.strip().split(" ")
+                coords = [Point(*c) for c in itertools.batched(map(float, coords), 2)]
+                labels[class_] = coords
+            with output.joinpath(input_.stem + ".txt").open("w", encoding="utf-8") as fd2:
+                regression_curves_to_txt(labels, fd2)
+            if write_csv:
+                with output.joinpath(input_.stem + ".txt").open("r", encoding="utf-8") as fd3:
+                    for line in fd3:
+                        class_, *parameters = line.strip().split(" ")
+                        if class_ == "1":
+                            files_list.append(input_.stem + ".png")
+                            with open("regression_parameters.csv", "a", encoding="utf-8", newline="") as csv_fd:
+                                writer = csv.writer(csv_fd)
+                                writer.writerow([input_.stem, *parameters])
+    elif input_.is_dir():
+        for label_ in sorted(input_.glob("*.txt")):
+            labels = {}
+            with label_.open("r", encoding="utf-8") as fd:
+                for line in fd:
+                    class_, *coords = line.strip().split(" ")
+                    coords = [Point(*c) for c in itertools.batched(map(float, coords), 2)]
+                    labels[class_] = coords
+                with output.joinpath(label_.stem + ".txt").open("w", encoding="utf-8") as fd2:
+                    regression_curves_to_txt(labels, fd2)
+                if write_csv:
+                    with output.joinpath(label_.stem + ".txt").open("r", encoding="utf-8") as fd3:
+                        line_to_add = []
+                        files_list.append(label_.stem + ".png")
+                        for line in fd3:
+                            class_, *parameters = line.strip().split(" ")
+
+                            line_to_add.append(parameters[0])
+                            line_to_add.append(parameters[1])
+                            line_to_add.append(parameters[2])
+
+                        with open("regression_parameters.csv", "a", encoding="utf-8", newline="") as csv_fd:
+                            writer = csv.writer(csv_fd)
+                            writer.writerow([label_.stem + ".png", *line_to_add])
+
+    if overwrite_df:
+        conversion_data = []
+        with open("df_2.csv", "r", encoding="utf-8", newline="") as df_fd:
+            reader = csv.reader(df_fd, delimiter=",")
+            for row in reader:
+                conversion_data.append(row)
+
+        new_data = []
+        with open("df_3.csv", "r", encoding="utf-8", newline="") as df_fd:
+            reader = csv.reader(df_fd, delimiter=",")
+            for row in reader:
+                new_data.append(row)
+
+        converted_data = deepcopy(new_data)
+
+        for i in range(len(converted_data)):
+            if i == 0:
+                continue
+            else:
+                converted_data[i][0] = f"{conversion_data[i][0]}"
+                converted_data[i][1] = f"{conversion_data[i][1]}"
+
+        zero = "0.0"
+        with open("new_df.csv", "w", encoding="utf-8", newline="") as df_fd:
+            df_writer = csv.writer(df_fd, delimiter=",")
+            with open("regression_parameters.csv", "r", encoding="utf-8", newline="") as csv_fd:
+                regression_reader = csv.reader(csv_fd, delimiter=",")
+                regression_reader = list(regression_reader)
+                df_writer.writerow(
+                    [
+                        *new_data[0],
+                        *[
+                            regression_reader[0][1],
+                            regression_reader[0][2],
+                            regression_reader[0][3],
+                            regression_reader[0][4],
+                            regression_reader[0][5],
+                            regression_reader[0][6],
+                        ],
+                    ]
+                )
+
+                j = 1
+                for data_row in new_data:
+                    if data_row[1] == "xiris_path":
+                        continue
+                    if data_row[1] in files_list:
+                        for i in range(len(new_data)):
+                            if regression_reader[i][0] == data_row[1]:
+                                df_writer.writerow(
+                                    [
+                                        *converted_data[j],
+                                        *[
+                                            regression_reader[i][1] if len(regression_reader[i]) > 1 else zero,
+                                            regression_reader[i][2] if len(regression_reader[i]) > 2 else zero,
+                                            regression_reader[i][3] if len(regression_reader[i]) > 3 else zero,
+                                            regression_reader[i][4] if len(regression_reader[i]) > 4 else zero,
+                                            regression_reader[i][5] if len(regression_reader[i]) > 5 else zero,
+                                            regression_reader[i][6] if len(regression_reader[i]) > 6 else zero,
+                                        ],
+                                    ]
+                                )
+                                break
+                    j = j + 1
+
+
+### OBSOLETE
+
+# @cli.command(short_help = "Generate automated-script-based txt labels for input_ files.")
+# @click.argument(
+#     "input_",
+#     type=click.Path(
+#         dir_okay=True,
+#         exists=True,
+#         readable=True,
+#         allow_dash=False,
+#         path_type=Path,
+#     ),
+# )
+# @click.option(
+#     "--output",
+#     default="-",
+#     type=click.File("w", encoding="utf-8"),
+#     help="Where to write the labels to. Default is stdout.",
+# )
+# @click.option(
+#     "--image-type",
+#     default=".png",
+#     show_default=True,
+#     type=click.Choice([".jpg", ".jpeg", ".png"]),
+#     help="Input image type.",
+# )
+# @click.option(
+#     "--plot",
+#     is_flag=True,
+#     default=False,
+#     type=bool,
+#     help="Plot the created label on top of the image.",
+# )
+# def manual_label(
+#     input_: Path,
+#     output,
+#     image_type: str,
+#     plot=bool,
+# ) -> None:
+#
+#     if input_.is_dir():
+#         image_list = sorted(input_.glob("*" + image_type))
+#         for image in image_list:
+#             image_height, image_width = cv2.imread(str(image), cv2.IMREAD_UNCHANGED).shape[:2]
+#
+#             labeler = ManualLabeler()
+#             labels = labeler.label(image)
+#             if labels is None:
+#                 continue
+#             unnormalized_labels = {
+#                 k: [Point(p.x * image_width, p.y * image_height) for p in v] for (k, v) in labels.items()
+#             }
+#
+#             if plot:
+#                 plot_labels(image, unnormalized_labels, input_.name)
+#             labels_to_txt(labels, output)
+#     elif input_.is_file():
+#         image_height, image_width = cv2.imread(str(input_), cv2.IMREAD_UNCHANGED).shape[:2]
+#         labeler = ManualLabeler()
+#         labels = labeler.label(input_)
+#         if labels is None:
+#             return
+#         unnormalized_labels = {
+#             k: [Point(p.x * image_width, p.y * image_height) for p in v] for (k, v) in labels.items()
+#         }
+#
+#         if plot:
+#             plot_labels(input_, unnormalized_labels, input_.name)
+#         labels_to_txt(labels, output)
+
+###
+
+
+@cli.command(short_help="Plot label, mask or regression curves for input_ files on prediction directory.")
+@click.argument(
+    "input_",
+    type=click.Path(
+        dir_okay=True,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+)
+@click.option(
+    "--plot-mask",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    type=bool,
+    help="Plot the mask on top of the image.",
+)
+@click.option(
+    "--plot-label",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    type=bool,
+    help="Plot the label on top of the image.",
+)
+@click.option(
+    "--plot-regression",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    type=bool,
+    help="Plot the regression curves.",
+)
+@click.option(
+    "--prediction-directory",
+    default=Path.cwd().joinpath("runs", "segment", "predict"),
+    show_default=True,
+    type=click.Path(
+        dir_okay=True,
+        exists=False,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    help="Where the prediction labels are.",
+)
+@click.option(
+    "--image-type",
+    default=".png",
+    show_default=True,
+    type=(click.Choice([".jpg", ".jpeg", ".png"])),
+    help="Input image type.",
+)
+@click.option(
+    "--model",
+    "-m",
+    default=Path.cwd().joinpath("runs", "segment", "train", "weights", "best.pt"),
+    show_default=True,
+    type=click.Path(
+        dir_okay=False,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    help="Model location",
+)
+def plot(
+    input_: Path,
+    plot_mask: bool,
+    plot_label: bool,
+    plot_regression: bool,
+    prediction_directory: Path,
+    image_type: str,
+    model: Path,
+) -> None:
+
+    x_min, x_max = 60, 400 if plot_mask else None
+    y_min, y_max = 130, 350 if plot_mask else None
+
+    if not (plot_mask or plot_label or plot_regression_curves):
+        raise ValueError("No plot option chosen.")
+
+    if input_.is_dir():
+        for image in sorted(input_.glob("*" + image_type)):
+            if plot_mask:
+                if prediction_directory.resolve().joinpath(image.stem + ".jpg") not in sorted(
+                    prediction_directory.glob("*.jpg")
+                ):
+                    raise ValueError(f"Prediction image {image.name} not found.")
+                else:
+                    plt.figure(1, figsize=(10, 10))
+                    plt.title(image.name)
+                    plt.xlim(x_min, x_max)
+                    plt.ylim(y_min, y_max)
+                    plt.gca().invert_yaxis()
+                    plt.imshow(plt.imread(str(prediction_directory.resolve().joinpath(image.stem + ".jpg"))))
+                    plt.show()
+            if plot_label or plot_regression:
+                labeler = YoloLabeler(model=model)
+                labels = labeler.label(image)
+                plot_labels(image, labels, title=image.name) if plot_label else None
+                plot_regression_curves(labels, image) if plot_regression else None
+    elif input_.is_file():
+        if plot_mask:
+            if prediction_directory.resolve().joinpath(input_.stem + ".jpg") not in sorted(
+                prediction_directory.glob("*.jpg")
+            ):
+                raise ValueError(f"Prediction image {input_.name} not found.")
+            else:
+                plt.xlim(x_min, x_max)
+                plt.ylim(y_min, y_max)
+                plt.gca().invert_yaxis()
+                plt.imshow(plt.imread(str(prediction_directory.resolve().joinpath(input_.stem + ".jpg"))))
+                plt.show()
+        if plot_label or plot_regression:
+            labeler = YoloLabeler(model=model)
+            labels = labeler.label(input_)
+            plot_labels(input_, labels, title=input_.name) if plot_label else None
+            plot_regression_curves(labels, input_) if plot_regression else None
+
+
+@cli.command(short_help="Generate image labels for model training with the appropriate folder structure.")
+@click.argument(
+    "input_",
+    type=click.Path(
+        dir_okay=True,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+)
+@click.option(
+    "--add-manual",
+    default=Path.cwd().joinpath("manual_images"),
+    show_default=True,
+    type=click.Path(
+        dir_okay=True,
+        exists=True,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
+    help="Path to images for manual labeling. Labels for these images must be in the same root folder with "
+    '"_labels" appended to the end of the same path name. If no boolean is given, manual labeling is enabled.',
+)
+@click.option(
+    "--image-type",
+    default=".png",
+    show_default=True,
+    type=(click.Choice([".jpg", ".jpeg", ".png"])),
+    help="Input image type.",
+)
+def organize_labels(input_: Path, add_manual: Path, image_type: str) -> None:
+
+    project_dir = Path.cwd()
+
+    output_paths = prepare_dataset_and_generate_labels(input_, project_dir)
+
+    if add_manual is not None:
+        for image in sorted(add_manual.glob("*" + image_type)):
+            if image.stem in sorted(output_paths.image_train.glob("*")):
+                output_paths.image_train.unlink(image)
+                output_paths.label_train.unlink(image.stem + ".txt")
+
+
+@cli.command(
+    short_help="Train YOLO model on available labels. Validation images and labels must be in their designated folders."
+)
+def train() -> None:
+    project_dir = Path.cwd()
+
+    yolo_dir = project_dir.joinpath("runs")
+    if yolo_dir.exists():
+        shutil.rmtree(yolo_dir)
+
+    output_paths = OutputPaths(project_dir)
+    model_weight_path = train_dataset(output_paths)
 
 
 def main() -> None:
-    start_time = time.time()
-    project_dir = Path.cwd()
-
-    if DO_TRAINING:
-        output_paths = prepare_dataset_and_generate_labels(project_dir.joinpath(MODEL_TRAINING_DATASET), project_dir)
-
-    labeling_time = time.time()
-
-    print("--- %s minutes for image labeling ---" % ((time.time() - start_time) / 60))
-
-    if DO_TRAINING:
-        model_weight_path = train_dataset(output_paths)
-    else:
-        model_weight_path = project_dir.joinpath("runs", "segment", "train", "weights", "best.pt")
-
-    yolo_run_dir = project_dir.joinpath("runs", "segment")
-    if yolo_run_dir.joinpath("predict").exists():
-        shutil.rmtree(yolo_run_dir.joinpath("predict"))
-    for name in ("labels", "regression-curve"):
-        yolo_run_dir.joinpath("predict", name).mkdir(parents=True, exist_ok=True)
-
-    yolo_labeler = YoloLabeler(model_weight_path, "cuda:0")
-    for image_path in project_dir.joinpath(PREDICTION_DATASET).glob("*.png"):
-        labels = yolo_labeler.label(image_path, save_predictions=(yolo_run_dir, "predict"))
-        if labels is None:
-            print(f"'{image_path}' could not be labeled")
-            continue
-        with yolo_run_dir.joinpath("predict", "labels", image_path.stem + ".txt").open("w", encoding="utf-8") as fd:
-            labels_to_txt(labels, fd)
-        with yolo_run_dir.joinpath("predict", "regression-curve", image_path.stem + ".txt").open(
-            "w", encoding="utf-8"
-        ) as fd:
-            regression_curves_to_txt(labels, fd)
-
-    print("--- %s minutes for YOLO execution ---" % ((time.time() - labeling_time) / 60))
+    cli(max_content_width=120)
