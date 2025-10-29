@@ -40,6 +40,9 @@ class ManualLabeler(Labeler):
 
         for y_coord in range(SEGMENT_Y_MIN, SEGMENT_Y_MAX):
             temps = extract_line_temperature(image, y_coord)
+            if np.mean(temps) < LINE_MEAN_TEMPERATURE_THRESHOLD:
+                continue
+
             temp_moving_averages = calculate_moving_average(temps, 11)
             deltas = calculate_deltas(image_width, temp_moving_averages)
             deltas_sum = calculate_deltas_sum(deltas)
