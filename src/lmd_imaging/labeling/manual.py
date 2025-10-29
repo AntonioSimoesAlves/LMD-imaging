@@ -187,7 +187,8 @@ def extract_line_temperature(image: cv2.typing.MatLike, y_coord: int) -> np.ndar
     """Fetches a horizontal pixel line and converts it into temperature data.
 
     Warning: scaling might change depending on image capture method used, and may need to be adjusted."""
-    return image[y_coord] / 10
+
+    return image[y_coord].flatten() / 10
 
 
 def calculate_deltas(img_width: int, moving_average: list[float]) -> list[float]:
