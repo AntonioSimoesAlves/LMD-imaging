@@ -557,7 +557,7 @@ def plot(
 )
 @click.option(
     "--add-manual",
-    default=Path.cwd().joinpath("manual_images"),
+    default=None,
     show_default=True,
     type=click.Path(
         dir_okay=True,
@@ -576,11 +576,19 @@ def plot(
     type=(click.Choice([".jpg", ".jpeg", ".png"])),
     help="Input image type.",
 )
-def organize_labels(input_: Path, add_manual: Path, image_type: str) -> None:
+@click.option(
+    "-f",
+    "--remove-existing",
+    default=False,
+    type=bool,
+    is_flag=True,
+    help="Remove existing images before generating.",
+)
+def generate_training_labels(input_: Path, add_manual: Path | None, image_type: str, remove_existing: bool) -> None:
 
     project_dir = Path.cwd()
 
-    output_paths = prepare_dataset_and_generate_labels(input_, project_dir)
+    output_paths = prepare_dataset_and_generate_labels(input_, project_dir, remove_existing=remove_existing)
 
     if add_manual is not None:
         for image in sorted(add_manual.glob("*" + image_type)):

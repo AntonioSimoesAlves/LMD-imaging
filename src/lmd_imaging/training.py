@@ -35,19 +35,27 @@ class OutputPaths:
         self.label_train = output_dir.joinpath("data", "labels", "train")
         self.label_validate = output_dir.joinpath("data", "labels", "val")
 
-    def create(self) -> None:
+    def create(self, remove_existing: bool = False) -> None:
         for path in (self.image_train, self.image_validate, self.label_train, self.label_validate):
-            if path.exists():
+            if remove_existing:
                 shutil.rmtree(path)
+            elif path.exists():
+                raise RuntimeError(f"{path} already exists, pass -f to remove it anyway")
+
             path.mkdir(exist_ok=True, parents=True)
 
 
-def prepare_dataset_and_generate_labels(dataset_dir: Path, output_dir: Path, test_size: float = 0.1) -> OutputPaths:
+def prepare_dataset_and_generate_labels(
+    dataset_dir: Path,
+    output_dir: Path,
+    test_size: float = 0.2,
+    remove_existing: bool = False,
+) -> OutputPaths:
     img_list = define_dataset(dataset_dir, "png")  # TODO: png
     img_train, img_test = sklearn.model_selection.train_test_split(img_list, test_size=test_size)
 
     output_paths = OutputPaths(output_dir)
-    output_paths.create()
+    output_paths.create(remove_existing)
 
     labeler = ManualLabeler()
     for input_images, output_image_set, output_label_set in [
