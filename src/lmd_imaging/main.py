@@ -566,8 +566,7 @@ def plot(
         allow_dash=False,
         path_type=Path,
     ),
-    help="Path to images for manual labeling. Labels for these images must be in the same root folder with "
-    '"_labels" appended to the end of the same path name. If no boolean is given, manual labeling is enabled.',
+    help="Path to folder containing training images and labels from manual labeling.",
 )
 @click.option(
     "--image-type",
@@ -591,10 +590,13 @@ def generate_training_labels(input_: Path, add_manual: Path | None, image_type: 
     output_paths = prepare_dataset_and_generate_labels(input_, project_dir, remove_existing=remove_existing)
 
     if add_manual is not None:
-        for image in sorted(add_manual.glob("*" + image_type)):
-            if image.stem in sorted(output_paths.image_train.glob("*")):
-                output_paths.image_train.unlink(image)
-                output_paths.label_train.unlink(image.stem + ".txt")
+        files = add_manual.iterdir()
+        for file in files:
+            if not file.is_file():
+                continue
+            if file.suffix == ".txt":
+                shutil.copy(file, output_paths.label_train)
+                shutil.copy(file.with_suffix(image_type), output_paths.image_train)
 
 
 @cli.command(
