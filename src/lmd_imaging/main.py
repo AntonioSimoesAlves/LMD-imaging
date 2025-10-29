@@ -3,7 +3,6 @@ import itertools
 import shutil
 from copy import deepcopy
 from pathlib import Path
-from sys import stdout
 from typing import Iterator
 
 import click
@@ -34,6 +33,8 @@ def cli() -> None:
 @click.option(
     "--model",
     "-m",
+    default=Path.cwd().joinpath("runs", "segment", "train", "weights", "best.pt"),
+    show_default=True,
     type=click.Path(
         dir_okay=False,
         exists=True,
@@ -47,11 +48,12 @@ def cli() -> None:
     "--device",
     "-d",
     type=str,
+    default="cpu",
     help="Specify which device to use for YOLO prediction.",
 )
 @click.option(
     "--output",
-    default=stdout,
+    default=Path.cwd().joinpath("output"),
     type=click.Path(
         file_okay=False,
         exists=False,
@@ -122,11 +124,14 @@ def yolo_label(
         path_type=Path,
     ),
     help="Path to YOLO model",
+    default=Path.cwd().joinpath("runs", "segment", "train", "weights", "best.pt"),
+    show_default=True,
 )
 @click.option(
     "--device",
     "-d",
     type=str,
+    default="cpu",
     help="Specify which device to use for YOLO prediction.",
 )
 @click.option(
@@ -144,7 +149,13 @@ def yolo_label(
 )
 @click.option(
     "--run-name",
-    type=str,
+    type=click.Path(
+        dir_okay=True,
+        exists=False,
+        readable=True,
+        allow_dash=False,
+        path_type=Path,
+    ),
     default=Path.cwd().joinpath("runs", "predict"),
     show_default=True,
     help="Name of the folder to write to.",
@@ -156,6 +167,9 @@ def prediction(
     output: Path,
     run_name: Path,
 ) -> Iterator[Labels | None]:
+
+    if model is None:
+        raise ValueError("No model found.")
 
     output_dir = output.joinpath(run_name.stem)
     if output_dir.exists():
@@ -231,11 +245,6 @@ def regression_parameters(
     if overwrite_df and not write_csv:
         raise ValueError(f"First write the intended csv. (use {"--write-csv"})")
 
-    if write_csv:
-        with open("regression_parameters.csv", "w", encoding="utf-8", newline="") as csv_fd:
-            writer = csv.writer(csv_fd, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(["xiris_name", "a_liquid", "b_liquid", "c_liquid", "a_mushy", "b_mushy", "c_mushy"])
-
     files_list = []
 
     if input_.is_file():
@@ -280,6 +289,14 @@ def regression_parameters(
                         with open("regression_parameters.csv", "a", encoding="utf-8", newline="") as csv_fd:
                             writer = csv.writer(csv_fd)
                             writer.writerow([label_.stem + ".png", *line_to_add])
+
+    if write_csv:
+        if "regression_parameters.csv" in Path.cwd():
+            with open("regression_parameters.csv", "w", encoding="utf-8", newline="") as csv_fd:
+                writer = csv.writer(csv_fd, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(["xiris_name", "a_liquid", "b_liquid", "c_liquid", "a_mushy", "b_mushy", "c_mushy"])
+        else:
+            raise ValueError(f"Could not find regression_parameters.csv in {Path.cwd()}")
 
     if overwrite_df:
         conversion_data = []
