@@ -14,43 +14,21 @@ This is an academic project.
 
 ## Setup
 
-### Windows
-
-Setup:
+### Instalation
 
 ```pwsh
-py -3 -m venv venv
-.\venv\Scripts\pip install . # without GPU support
-.\venv\Scripts\pip install .[gpu] --extra-index-url "https://download.pytorch.org/whl/cu126" # with GPU support
+uv sync
 ```
 
-Running:
+### Running
 
 ```pwsh
-.\venv\Scripts\lmd_image.exe
-```
-
-### Unix
-
-Setup:
-
-```sh
-python3 -m venv venv
-venv/bin/pip install . # without GPU support
-venv/bin/pip install .[gpu] --extra-index-url "https://download.pytorch.org/whl/cu126" # with GPU support
-```
-
-Running:
-
-```sh
-venv/bin/lmd_imaging
+uv run lmd_imaging
 ```
 
 ## Normal operation
-Running the program will fetch the images in /dataset/, create segmentation masks according to predefined melting and maximum temperatures.
 
-The masks are then split into training and testing folders inside the /data/ directory.
+Running the program will display all the commands that can be executed through the command line, alongside a small
+description for each.
 
-YOLOv8n-seg will then train and validate the model on said images.
-
-Upon successful completion of the model, the directory with the model data will open automatically.
+Running each command followed by ```--help``` will show all the options for each command and what they do. 
