@@ -10,15 +10,23 @@ DEBUG_Y_SWEEP = False
 
 MAX_T = 2500
 MELTING_T = 1100
-MUSHY_MINIMUM = 1200
+MUSHY_MINIMUM = 1150
 
-DELTA_THRESHOLD = -140
+DELTA_WEIGHT = 10.0
+DELTA_THRESHOLD = -140  # lower is more melt pool detection
+
+# In order to avoid incorrect boundary points in hotspot at the center
 
 X_HOTSPOT = [265, 304]
 Y_HOTSPOT = [215, 245]
 
+# Only segment the portion of the image that has the melt pool
+
 SEGMENT_Y_MIN = 175
 SEGMENT_Y_MAX = 280
+
+LINE_MEAN_TEMPERATURE_THRESHOLD = 630  # Average of the horizontal line temperature. To detect the presence of the
+# melt pool
 
 
 class ManualLabeler(Labeler):
@@ -49,40 +57,16 @@ class ManualLabeler(Labeler):
             if intersection:
                 mushy_intersections[y_coord] = intersection
 
-            # if DEBUG_Y_SWEEP:
-            #     x_min = 100
-            #     x_max = 350
-            #
-            #     plt.figure(1, figsize=(10, 10))
-            #     plt.subplot(3, 1, 1)
-            #     plt.xlim([x_min, x_max])
-            #     plt.ylim([SEGMENT_Y_MIN, SEGMENT_Y_MAX])
-            #     # plt.title(img_path.resolve().name)
-            #     plt.imshow(image)
-            #     for i in range(len(liquid_crossing_point)):
-            #         plt.scatter(liquid_crossing_point[i], y_coord, color="red")
-            #     for i in range(len(mushy_crossing_point)):
-            #         plt.scatter(mushy_crossing_point[i], y_coord, color="yellow")
-            #     plt.axhline(y_coord, color="red")
-            #     plt.subplot(3, 1, 2)
-            #     plt.plot(deltas_sum)
-            #     plt.xlim([x_min, x_max])
-            #     plt.subplot(3, 1, 3)
-            #     plt.plot(deltas_sum_moving_average)
-            #     for i in range(len(liquid_crossing_point)):
-            #         plt.axvline(liquid_crossing_point[i], color="red")
-            #     plt.xlim([x_min, x_max])
-            #     plt.show()
         try:
             return {
-                LIQUID: self._segment(liquid_intersections),
-                MUSHY: self._segment(mushy_intersections),
+                LIQUID: self._segment(liquid_intersections, image_width, image_height),
+                MUSHY: self._segment(mushy_intersections, image_width, image_height),
             }
-        except EndOfSegmentation as _:
+        except (EndOfSegmentation, SegmentLoopException):
             return None
 
     @staticmethod
-    def _segment(intersections: dict[int, list[int]]) -> list[Point]:
+    def _segment(intersections: dict[int, list[int]], image_width: int, image_height: int) -> list[Point]:
         output = []
 
         points: list[Point] = []
@@ -131,7 +115,6 @@ class ManualLabeler(Labeler):
 
         segments.append((right_end, left_end))
 
-        mask_coordinates = []
         visited_segments = set()
 
         current_segment = segments[0]
@@ -142,9 +125,7 @@ class ManualLabeler(Labeler):
             visited_segments.add(current_segment)
 
             segment_end_point = points[current_segment[1]]
-            output.append(Point(segment_end_point.x, segment_end_point.y))
-            mask_coordinates.append(segment_end_point.x)
-            mask_coordinates.append(segment_end_point.y)
+            output.append(Point(segment_end_point.x / image_width, segment_end_point.y / image_height))
             previous_segment_start = current_segment[0]
             next_segment_start = current_segment[1]
 
@@ -169,9 +150,7 @@ class ManualLabeler(Labeler):
             visited_segments.add(current_segment)
 
             segment_end_point = points[current_segment[0]]
-            output.append(Point(segment_end_point.x, segment_end_point.y))
-            mask_coordinates.append(segment_end_point.x)
-            mask_coordinates.append(segment_end_point.y)
+            output.append(Point(segment_end_point.x / image_width, segment_end_point.y / image_height))
             next_segment_start = current_segment[0]
             if next_segment_start == initial_point:
                 break
@@ -265,14 +244,17 @@ def find_crossing_point(
                     continue
             if temperature_moving_average[i] > MELTING_T:
                 if len(melt_pool_points_liquid_coordinate) > 0:
-                    if i - melt_pool_points_liquid_coordinate[-1] > 20:
+                    if (
+                        i - melt_pool_points_liquid_coordinate[-1] > 20
+                    ):  # Avoids successive detections on pixels next to each other
                         melt_pool_points_liquid_coordinate.append(i)
                 else:
                     melt_pool_points_liquid_coordinate.append(i)
 
     for i in range(len(deltas_sum_moving_average)):
-        if temperature_moving_average[i] > MUSHY_MINIMUM and not found_first_mushy_point:
-            if len(melt_pool_points_liquid_coordinate) == 0:
+        if temperature_moving_average[i] > MUSHY_MINIMUM and not found_first_mushy_point:  # First point that has
+            # temperature above the defined minimum for mushy region
+            if len(melt_pool_points_liquid_coordinate) == 0:  # Only detects mushy points if there are liquid points
                 continue
             found_first_mushy_point = True
             melt_pool_points_mushy_coordinate.append(i)
@@ -283,10 +265,12 @@ def find_crossing_point(
             and len(melt_pool_points_liquid_coordinate) > 0
         ):
             if len(melt_pool_points_liquid_coordinate) == 1:
-                if 1200 < temperature_moving_average[melt_pool_points_liquid_coordinate[-1] + 10] < 1400:
+                if 1200 < temperature_moving_average[melt_pool_points_liquid_coordinate[-1] + 10] < 1400:  # checks if
+                    # the single liquid point is close to the potential mushy point (left side of the liquid melt pool)
                     melt_pool_points_mushy_coordinate.append(i)
                 else:
-                    if len(melt_pool_points_mushy_coordinate) == 1:
+                    if len(melt_pool_points_mushy_coordinate) == 1:  # if the liquid point is on the right side of the
+                        # liquid melt pool, remove the mushy point and skip this line
                         melt_pool_points_mushy_coordinate.pop()
                         break
             elif len(melt_pool_points_liquid_coordinate) >= 2:
@@ -300,8 +284,4 @@ class SegmentLoopException(Exception):
 
 
 class EndOfSegmentation(Exception):
-    pass
-
-
-class NoInterceptionException(Exception):
     pass
