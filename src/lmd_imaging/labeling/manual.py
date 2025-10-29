@@ -208,13 +208,15 @@ def calculate_deltas(img_width: int, moving_average: list[float]) -> list[float]
 def calculate_deltas_sum(pixels_deltas: list[float]) -> list[float]:
     deltas_sum = []
 
+    # DELTA_WEIGHT adjusts the importance of the current pixel temperature delta compared to previous deltas
+
     for i in range(len(pixels_deltas)):
         if i < len(pixels_deltas) - 1:
             deltas_sum.append(
-                10.0 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2] - pixels_deltas[i + 1]
+                DELTA_WEIGHT * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2] - pixels_deltas[i + 1]
             )
         else:
-            deltas_sum.append(6.0 * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2])
+            deltas_sum.append(DELTA_WEIGHT * pixels_deltas[i] + pixels_deltas[i - 1] + pixels_deltas[i - 2])
 
     return deltas_sum
 
