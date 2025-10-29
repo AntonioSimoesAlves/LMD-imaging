@@ -29,6 +29,9 @@ class Labeler(ABC):
 
 
 def labels_to_txt(labels: Labels, to: TextIO) -> None:
+    if labels is None:
+        to.write("\n")
+        return
     for label, coords in labels.items():
         if coords is None:
             continue
@@ -41,18 +44,26 @@ def labels_to_txt(labels: Labels, to: TextIO) -> None:
         to.write("\n")
 
 
-def calculate_point_regression_curve(points: list[Point]) -> list[float]:
-    return np.polyfit(
-        [c.x for c in points],
-        [c.y for c in points],
-        2,
-    ).tolist()
+def calculate_point_regression_curve(points: list[Point]) -> list[float] | None:
+    return (
+        np.polyfit(
+            [c.x for c in points],
+            [c.y for c in points],
+            2,
+        ).tolist()
+        if len(points) > 0
+        else None
+    )
 
 
 def calculate_liquid_melt_pool_regression_curve(points: list[Point]) -> list[float]:
     liquid_downmost_point_index = max(range(len(points)), key=lambda i: points[i].y)
-    liquid_leftmost_point_index = min(range(len(points)), key=lambda i: points[i].y)
+    liquid_leftmost_point_index = min(range(len(points)), key=lambda i: points[i].x)
     melt_pool_liquid_tail = points[liquid_leftmost_point_index : liquid_downmost_point_index + 1]
+    if not melt_pool_liquid_tail:
+        melt_pool_liquid_tail_1 = points[liquid_leftmost_point_index:]
+        melt_pool_liquid_tail_2 = points[: liquid_downmost_point_index + 1]
+        melt_pool_liquid_tail = melt_pool_liquid_tail_1 + melt_pool_liquid_tail_2
 
     return calculate_point_regression_curve(melt_pool_liquid_tail)
 
@@ -60,7 +71,11 @@ def calculate_liquid_melt_pool_regression_curve(points: list[Point]) -> list[flo
 def calculate_mushy_melt_pool_regression_curve(points: list[Point]) -> list[float]:
     mushy_downmost_point_index = max(range(len(points)), key=lambda i: points[i].x)
     mushy_leftmost_point_index = min(range(len(points)), key=lambda i: points[i].x)
-    melt_pool_mushy_tail = points[mushy_leftmost_point_index : mushy_downmost_point_index + 1]
+    melt_pool_mushy_tail = points[mushy_leftmost_point_index + 1 : mushy_downmost_point_index + 1]
+    if not melt_pool_mushy_tail:
+        melt_pool_liquid_tail_1 = points[mushy_leftmost_point_index:]
+        melt_pool_liquid_tail_2 = points[: mushy_downmost_point_index + 1]
+        melt_pool_mushy_tail = melt_pool_liquid_tail_1 + melt_pool_liquid_tail_2
 
     return calculate_point_regression_curve(melt_pool_mushy_tail)
 
@@ -73,6 +88,8 @@ def regression_curves_to_txt(labels: Labels, to: TextIO) -> None:
         if labels.get(class_) is None:
             continue
         to.write(class_)
+        if f(labels[class_]) is None:
+            continue
         for regression_parameters in f(labels[class_]):
             to.write(" ")
             to.write(str(regression_parameters))
