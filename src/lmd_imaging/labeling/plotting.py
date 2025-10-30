@@ -12,7 +12,7 @@ from .common import (
     calculate_mushy_melt_pool_regression_curve,
 )
 
-X_MIN, X_MAX = 140, 360  # Sets boundaries for the plotting x-axis
+X_MIN, X_MAX = 100, 360  # Sets boundaries for the plotting x-axis
 Y_MIN, Y_MAX = 170, 290  # Sets boundaries for the plotting y-axis
 
 
