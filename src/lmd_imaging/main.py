@@ -582,7 +582,7 @@ def generate_training_labels(input_: Path, add_manual: Path | None, image_type: 
 
 
 @cli.command(
-    short_help="Train YOLO model on available labels. Validation images and labels must be in their designated folders."
+    short_help="Train YOLO model on available labels. All images and labels must be in their corresponding directories."
 )
 @click.option(
     "--epochs",
