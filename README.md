@@ -141,6 +141,6 @@ specified output. Alternatively, using the ```plot``` command will also allow vi
 inside Matplotlib. Additionally, the labels and regression curves can also be plotted using this command.
 
 **4.** Generating the YOLO labels should be done with ```yolo-label```. This will ensure that the labels are in the
-correct format for the last command.
+correct format for the last command. Ideally done with the full dataset.
 
 **5.** Using ```extract-regression-parameters``` allows the export of the regression parameters to a CSV file.
