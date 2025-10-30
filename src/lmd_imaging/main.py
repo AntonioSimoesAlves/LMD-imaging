@@ -546,7 +546,13 @@ def generate_training_labels(input_: Path, add_manual: Path | None, image_type: 
 @cli.command(
     short_help="Train YOLO model on available labels. Validation images and labels must be in their designated folders."
 )
-def train() -> None:
+@click.option(
+    "--epochs",
+    default=300,
+    show_default=True,
+    help="Number of epochs to train the model.",
+)
+def train(epochs: int) -> None:
     project_dir = Path.cwd()
 
     yolo_dir = project_dir.joinpath("runs")
@@ -554,7 +560,7 @@ def train() -> None:
         shutil.rmtree(yolo_dir)
 
     output_paths = OutputPaths(project_dir)
-    model_weight_path = train_dataset(output_paths)
+    model_weight_path = train_dataset(output_paths, epochs=epochs)
 
 
 def main() -> None:
