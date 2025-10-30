@@ -1,6 +1,7 @@
 import csv
 import itertools
 import shutil
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Iterator
@@ -590,6 +591,7 @@ def generate_training_labels(input_: Path, add_manual: Path | None, image_type: 
     help="Number of epochs to train the model.",
 )
 def train(epochs: int) -> None:
+    start_time = time.time()
     project_dir = Path.cwd()
 
     yolo_dir = project_dir.joinpath("runs")
@@ -598,6 +600,8 @@ def train(epochs: int) -> None:
 
     output_paths = OutputPaths(project_dir)
     model_weight_path = train_dataset(output_paths, epochs=epochs)
+
+    print(f"Finished training in {(time.time() - start_time) / 60} minutes.")
 
 
 def main() -> None:
