@@ -264,7 +264,7 @@ def prediction(
     is_flag=True,
     help='Overwrite existing labels in "new_df.csv". Requires "df_1.csv" and "df_2.csv"',
 )
-def regression_parameters(
+def extract_regression_parameters(
     input_: Path,
     output: Path,
     write_csv: bool,
