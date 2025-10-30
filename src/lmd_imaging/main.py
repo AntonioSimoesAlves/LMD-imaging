@@ -53,7 +53,7 @@ def cli() -> None:
 )
 @click.option(
     "--output",
-    default=Path.cwd().joinpath("output"),
+    default=Path.cwd().joinpath("yolo_labels"),
     type=click.Path(
         file_okay=False,
         exists=False,
@@ -70,30 +70,56 @@ def cli() -> None:
     show_default=True,
     help="Input image type.",
 )
+@click.option(
+    "--verbose",
+    type=(click.Choice(["none", "small", "full"])),
+    default="none",
+    show_default=True,
+    help="Enable verbose mode. Small verbose only lists every 200 labelled images.",
+)
 def yolo_label(
     input_: Path,
     model: Path,
     device: str,
     output: Path,
     image_type=".png",
+    verbose="none",
 ) -> None:
+
+    verbose_image_limit = 100
+    if verbose != "none" and verbose != "small" and verbose != "full":
+        verbose = "none"
+
+    if verbose == "small" and verbose_image_limit > len(list(Path(input_).glob("*" + image_type))):
+        verbose = "none"
+
     if model is None:
         model = "yolo11n-seg.yaml"
-    labeler = YoloLabeler(model=model, device=device)
+    labeler = YoloLabeler(
+        model=model, device=device, verbose=False if verbose == "none" or verbose == "small" else True
+    )
 
     if output.exists():
         shutil.rmtree(output)
     output.mkdir(parents=True, exist_ok=True)
 
+    if verbose == "small":
+        image_count = 0
+
     if input_.is_dir():
         input_ = Path(input_)
         for image in sorted(input_.glob("*" + image_type)):
+            if verbose == "small" and image_count % verbose_image_limit == 0:
+                print(f"Have labelled {image_count} images out of {len(list(Path(input_).glob("*"+image_type)))}.")
             if str(image) == "-" or image.is_dir():
                 raise ValueError("Directory and stdin inputs can only be passed as a single input")
-            labels = labeler.label(image)
+            labels = labeler.label(image, verbose=False if verbose == "none" or verbose == "small" else True)
             output_path = output.joinpath(image.stem + ".txt")
             with output_path.open("w", encoding="utf-8") as fd:
                 labels_to_txt(labels, fd)
+            if verbose == "small":
+                image_count += 1
+        print(f"Have labelled all {len(list(Path(input_).glob("*"+image_type)))} images.")
     elif input_.is_file():
         labels = labeler.label(input_)
         output_path = output.joinpath(input_.stem + ".txt")

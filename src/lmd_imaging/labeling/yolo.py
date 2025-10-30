@@ -12,13 +12,18 @@ from .common import Labeler, Labels, Point, LIQUID, MUSHY
 
 
 class YoloLabeler(Labeler):
-    def __init__(self, model: Path | str, device: str | None = "cuda:0"):
+    def __init__(self, model: Path | str, device: str | None = "cuda:0", verbose: bool = False):
         super().__init__()
         self.model = YOLO(model=model)
         self.device = device
+        self.verbose = verbose
 
     def label(
-        self, image: cv2.typing.MatLike | Path, *, save_predictions: tuple[Path, str] | None = None
+        self,
+        image: cv2.typing.MatLike | Path,
+        *,
+        save_predictions: tuple[Path, str] | None = None,
+        verbose: bool = False,
     ) -> Labels | None:
         if isinstance(image, np.ndarray) and (len(image.shape) < 3 or image.shape[2] != 3):
             raise ValueError("YOLO only supports BGR images")
@@ -28,12 +33,17 @@ class YoloLabeler(Labeler):
                 source=image,
                 device=self.device,
                 show_boxes=False,
+                verbose=verbose,
                 **self._save_predictions_kwargs(save_predictions),
             )[0]
         )
 
     def batch_label(
-        self, images: Path | Iterable[cv2.typing.MatLike], *, save_predictions: tuple[Path, str] | None = None
+        self,
+        images: Path | Iterable[cv2.typing.MatLike],
+        *,
+        save_predictions: tuple[Path, str] | None = None,
+        verbose: bool = False,
     ) -> Iterator[Labels | None]:
         if isinstance(images, Path) and not images.is_dir():
             raise ValueError("Path must be a directory")
@@ -48,6 +58,7 @@ class YoloLabeler(Labeler):
                 source=images,
                 device=self.device,
                 show_boxes=False,
+                verbose=verbose,
                 **self._save_predictions_kwargs(save_predictions),
             ),
         )
