@@ -119,7 +119,10 @@ def yolo_label(
                 labels_to_txt(labels, fd)
             if verbose == "small":
                 image_count += 1
-        print(f"Have labelled all {len(list(Path(input_).glob("*"+image_type)))} images.")
+        print(
+            f"Have labelled all {len(list(Path(input_).glob("*"+image_type)))} images. Output is written to "
+            f"{output}."
+        )
     elif input_.is_file():
         labels = labeler.label(input_)
         output_path = output.joinpath(input_.stem + ".txt")
@@ -214,6 +217,8 @@ def prediction(
         )
     elif not input_.exists():
         exit()
+
+    print(f"Predictions have been saved to {output_dir}.")
 
     return labels
 
@@ -326,6 +331,8 @@ def regression_parameters(
                         with open("regression_parameters.csv", "a", encoding="utf-8", newline="") as csv_fd:
                             writer = csv.writer(csv_fd)
                             writer.writerow([label_.stem + ".png", *line_to_add])
+
+    print(f"CSV file created in {output}.")
 
     if overwrite_df:
         conversion_data = []
@@ -570,6 +577,7 @@ def generate_training_labels(input_: Path, add_manual: Path | None, image_type: 
             if file.suffix == ".txt":
                 shutil.copy(file, output_paths.label_train)
                 shutil.copy(file.with_suffix(image_type), output_paths.image_train)
+    print(f"Images stored in {output_paths.image_train} and labels stored in {output_paths.label_train}.")
 
 
 @cli.command(
