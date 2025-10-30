@@ -17,9 +17,6 @@
 /data.yaml
 /labels.cache
 /_timestamps_params.npy
-/df.csv
-/df_2.csv
-/df_3.csv
 /new_df.csv
 /regression_parameters.csv
 /yolo11n.pt
