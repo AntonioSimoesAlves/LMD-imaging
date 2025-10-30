@@ -16,17 +16,21 @@ This is an academic project.
 
 ### Instalation
 
+While inside the project's root directory run:
+
 ```pwsh
 uv sync
 ```
 
 ### Running
 
+After installation, the next command, again in the root directory, should be:
+
 ```pwsh
 uv run lmd_imaging
 ```
 
-Running the program will display all the commands that can be executed through the command line, alongside a small
+Running the previous command will display all the commands that can be executed through the terminal, alongside a small
 description for each.
 
 Running each command followed by ```--help``` will show all the options for each command and what they do.
