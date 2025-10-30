@@ -256,7 +256,7 @@ def prediction(
     default=False,
     show_default=True,
     is_flag=True,
-    help='Overwrite existing labels in "new_df.csv". Requires "df_2.csv" and "df_3.csv"',
+    help='Overwrite existing labels in "new_df.csv". Requires "df_1.csv" and "df_2.csv"',
 )
 def regression_parameters(
     input_: Path,
@@ -273,9 +273,15 @@ def regression_parameters(
 
     files_list = []
 
+    if write_csv:
+        with open("regression_parameters.csv", "w", encoding="utf-8", newline="") as csv_fd:
+            writer = csv.writer(csv_fd, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(["xiris_name", "a_liquid", "b_liquid", "c_liquid", "a_mushy", "b_mushy", "c_mushy"])
+
     if input_.is_file():
         labels = {}
         with input_.open("r", encoding="utf-8") as fd:
+            files_list.append(input_.stem + ".png")
             for line in fd:
                 class_, *coords = line.strip().split(" ")
                 coords = [Point(*c) for c in itertools.batched(map(float, coords), 2)]
@@ -284,13 +290,18 @@ def regression_parameters(
                 regression_curves_to_txt(labels, fd2)
             if write_csv:
                 with output.joinpath(input_.stem + ".txt").open("r", encoding="utf-8") as fd3:
+                    line_to_add = []
+                    files_list.append(input_.stem + ".png")
                     for line in fd3:
                         class_, *parameters = line.strip().split(" ")
-                        if class_ == "1":
-                            files_list.append(input_.stem + ".png")
-                            with open("regression_parameters.csv", "a", encoding="utf-8", newline="") as csv_fd:
-                                writer = csv.writer(csv_fd)
-                                writer.writerow([input_.stem, *parameters])
+
+                        line_to_add.append(parameters[0])
+                        line_to_add.append(parameters[1])
+                        line_to_add.append(parameters[2])
+
+                    with open("regression_parameters.csv", "a", encoding="utf-8", newline="") as csv_fd:
+                        writer = csv.writer(csv_fd)
+                        writer.writerow([input_.stem + ".png", *line_to_add])
     elif input_.is_dir():
         for label_ in sorted(input_.glob("*.txt")):
             labels = {}
@@ -316,23 +327,15 @@ def regression_parameters(
                             writer = csv.writer(csv_fd)
                             writer.writerow([label_.stem + ".png", *line_to_add])
 
-    if write_csv:
-        if "regression_parameters.csv" in Path.cwd():
-            with open("regression_parameters.csv", "w", encoding="utf-8", newline="") as csv_fd:
-                writer = csv.writer(csv_fd, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
-                writer.writerow(["xiris_name", "a_liquid", "b_liquid", "c_liquid", "a_mushy", "b_mushy", "c_mushy"])
-        else:
-            raise ValueError(f"Could not find regression_parameters.csv in {Path.cwd()}")
-
     if overwrite_df:
         conversion_data = []
-        with open("df_2.csv", "r", encoding="utf-8", newline="") as df_fd:
+        with open("df_1.csv", "r", encoding="utf-8", newline="") as df_fd:
             reader = csv.reader(df_fd, delimiter=",")
             for row in reader:
                 conversion_data.append(row)
 
         new_data = []
-        with open("df_3.csv", "r", encoding="utf-8", newline="") as df_fd:
+        with open("df_2.csv", "r", encoding="utf-8", newline="") as df_fd:
             reader = csv.reader(df_fd, delimiter=",")
             for row in reader:
                 new_data.append(row)
